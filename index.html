@@ -898,38 +898,53 @@
     }
 
     function paintByProject(projectName) {
-      if (!geojsonLayer) return;
-      CURRENT_PROJECT = projectName;
+  if (!geojsonLayer) return;
+  CURRENT_PROJECT = projectName;
 
-      const hue = PROJECT_COLORS[projectName] ?? 220;
-      const { min, max } = valueExtentByProject[projectName] || { min: 0, max: 0 };
+  const hue = PROJECT_COLORS[projectName] ?? 220;
+  const { min, max } = valueExtentByProject[projectName] || { min: 0, max: 0 };
 
-      let hasAny = false;
-      let bounds = L.latLngBounds();
+  let hasAny = false;
+  let bounds = L.latLngBounds();
+  let topLayer = null;
+  let topVal = -1;
 
-      geojsonLayer.eachLayer(layer => {
-        const depKey = layer.featureNames.key; // departamento normalizado
-        const depInfo = deptData.get(depKey);
-        const total = depInfo?.byProject[projectName]?.total || 0;
+  geojsonLayer.eachLayer(layer => {
+    const depKey = layer.featureNames.key;
+    const depInfo = deptData.get(depKey);
+    const total = depInfo?.byProject[projectName]?.total || 0;
 
-        const fill = colorScale(total, min, max, hue);
-        const fo = total > 0 ? 0.95 : 0.85;
-        layer.setStyle({ fillColor: fill, fillOpacity: fo, color: "#9aa0a6", weight: 0.7 });
+    const fill = colorScale(total, min, max, hue);
+    const fo = total > 0 ? 0.95 : 0.85;
+    layer.setStyle({ fillColor: fill, fillOpacity: fo, color: "#9aa0a6", weight: 0.7 });
 
-        if (total > 0) {
-          hasAny = true;
-          try { bounds.extend(layer.getBounds()); } catch (e) { }
-        }
-      });
-
-      updateLegend(min, max, projectName);
-
-      if (hasAny && bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 }); // <-- zoom suave
-      } else {
-        map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
-      }
+    if (total > 0) {
+      hasAny = true;
+      if (total > topVal) { topVal = total; topLayer = layer; }
+      try { bounds.extend(layer.getBounds()); } catch (e) {}
     }
+  });
+
+  updateLegend(min, max, projectName);
+
+  if (hasAny && bounds.isValid()) {
+    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 });
+    // Auto-focus al top (opcional, comenta si no lo quieres)
+    if (topLayer) {
+      LOCKED_FEATURE = topLayer;
+      // muestra y ancla tarjeta
+      showInfoCard({ originalEvent: { pageX: 0, pageY: 0 } }, topLayer, true);
+      infoCard.classList.add('locked');
+      infoCard.style.left = "auto";
+      infoCard.style.right = "24px";
+      infoCard.style.top = "24px";
+      focusDept(topLayer);
+    }
+  } else {
+    map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+  }
+}
+
 
     function focusDept(layer) {
       if (!geojsonLayer) return;
@@ -1157,5 +1172,6 @@
 
   </script>
 </body>
+
 
 </html>
