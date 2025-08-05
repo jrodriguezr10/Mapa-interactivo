@@ -289,6 +289,23 @@
     .leaflet-interactive {
       cursor: pointer;
     }
+    @media (max-width: 768px) {
+  .notice {
+    margin-top: 60px; /* baja la tarjeta para dejar espacio a los botones */
+    font-size: 13px;
+    padding: 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .notice {
+    position: relative;
+    margin-top: 8px;   /* espacio debajo de los botones */
+    order: 2;          /* si usamos flex en el contenedor, esto la pone después */
+    font-size: 13px;
+    padding: 8px;
+  }
+}
   </style>
 </head>
 
@@ -326,21 +343,39 @@
 
 
     // Nombres EXACTOS de proyectos (de tu Excel):
+    // + Proyecto nuevo
     const PROJECTS = [
       "Empleo Sin Barreras (mitigacion + conexión)",
       "Fondo Mujer 2.0",
       "CONFAMA",
       "Alcaldia de Malambo",
-      "Alcaldia de Barranquilla"
+      "Alcaldia de Barranquilla",
+      "Mujeres+"                      // <-- nuevo
     ];
-    const TOTAL_FIELD = "Total"; // opcional
+
+    // Si quieres morado como los otros:
     const PROJECT_COLORS = {
-      "Empleo Sin Barreras (mitigacion + conexión)": 210, // azul
-      "Fondo Mujer 2.0": 290,                             // morado
-      "CONFAMA": 25,                                      // naranja
-      "Alcaldia de Malambo": 290,                         // verde
-      "Alcaldia de Barranquilla": 290                       // rojo
+      "Empleo Sin Barreras (mitigacion + conexión)": 210,
+      "Fondo Mujer 2.0": 290,             // morado
+      "CONFAMA": 25,
+      "Alcaldia de Malambo": 140,         // morado
+      "Alcaldia de Barranquilla": 0,    // morado
+      "Mujeres+": 330                     // <-- morado también
     };
+
+    // Reglas especiales por proyecto (sin repartir por municipio)
+    const SPECIAL_RULES = {
+      "Mujeres+": {
+        type: "dept_threshold_any_municipio",
+        byDept: {
+          "ATLANTICO": {
+            threshold: 125,
+            candidates: ["Soledad", "Puerto Colombia", "Galapa", "Malambo"]
+          }
+        }
+      }
+    };
+
 
 
     // Paleta y función de color
@@ -457,6 +492,37 @@
           max: isFinite(max) ? max : 0
         };
       });
+      // --- APLICAR REGLAS ESPECIALES (ej. Mujeres+) ---
+      Object.keys(SPECIAL_RULES).forEach(proj => {
+        const rule = SPECIAL_RULES[proj];
+        if (rule.type === "dept_threshold_any_municipio") {
+          Object.keys(rule.byDept).forEach(depRawName => {
+            const dep = norm(depRawName);
+            const cfg = rule.byDept[depRawName];
+
+            // Asegurar nodo del depto
+            if (!deptData.has(dep)) deptData.set(dep, { byProject: {} });
+            if (!deptData.get(dep).byProject[proj]) {
+              deptData.get(dep).byProject[proj] = { total: 0, items: [] };
+            }
+
+            // Fijar total departamental = threshold
+            deptData.get(dep).byProject[proj].total = cfg.threshold;
+
+            // Mostrar candidatos en la tarjeta (sin sumar)
+
+            // Actualizar min/max para la leyenda
+            let ext = valueExtentByProject[proj] || { min: Infinity, max: -Infinity };
+            ext.min = Math.min(ext.min, cfg.threshold);
+            ext.max = Math.max(ext.max, cfg.threshold);
+            valueExtentByProject[proj] = {
+              min: isFinite(ext.min) ? ext.min : 0,
+              max: isFinite(ext.max) ? ext.max : 0
+            };
+          });
+        }
+      });
+
     }
 
     // Reemplaza tu loadFromArray por esta
@@ -838,7 +904,12 @@
           "Depto": "Caldas",
           "Municipio": "Villa Maria ",
           "Fondo Mujer 2.0": 5
-        }
+        },
+        { "Depto": "Atlántico", "Municipio": "Soledad", "Mujeres+": 50 },
+        { "Depto": "Atlántico", "Municipio": "Puerto Colombia", "Mujeres+": 30 },
+        { "Depto": "Atlántico", "Municipio": "Galapa", "Mujeres+": 20 },
+        { "Depto": "Atlántico", "Municipio": "Malambo", "Mujeres+": 25 }
+
       ]
     loadFromArray(INLINE_DATA);
 
@@ -1080,11 +1151,23 @@
         LOCKED_FEATURE = layer;
         showInfoCard(e, layer, true);
         infoCard.classList.remove('fly-out');
-        infoCard.classList.add('locked');
-        infoCard.style.left = "auto";
-        infoCard.style.right = "24px";
-        infoCard.style.top = "24px";
-        focusDept(layer);
+infoCard.classList.add('locked');
+
+// Escritorio: esquina sup. derecha
+if (window.innerWidth > 768) {
+  infoCard.style.left = "auto";
+  infoCard.style.right = "24px";
+  infoCard.style.top = "24px";
+  infoCard.style.bottom = "auto";
+} 
+// Móvil: abajo
+else {
+  infoCard.style.left = "12px";
+  infoCard.style.right = "12px";
+  infoCard.style.top = "auto";
+  infoCard.style.bottom = "12px";
+}
+
       }
     }
 
@@ -1125,12 +1208,29 @@
         return;
       }
 
-      const depKey = layer.featureNames.key;      // normalizado
+      const depKey = layer.featureNames.key; // normalizado
       const depInfo = deptData.get(depKey) || {};
       const proj = CURRENT_PROJECT || "(sin seleccionar)";
       const node = depInfo.byProject?.[proj];
       const total = node?.total || 0;
       const items = (node?.items || []).slice().sort((a, b) => b.val - a.val); // todos
+
+      // Texto de regla especial (si aplica)
+      let ruleNote = "";
+      const sr = SPECIAL_RULES[proj];
+      if (sr && sr.type === "dept_threshold_any_municipio") {
+        const depConf =
+          sr.byDept[layer.featureNames.depRaw] ||
+          sr.byDept[layer.featureNames.dep] ||
+          sr.byDept["ATLANTICO"];
+        if (depConf) {
+          ruleNote = `<tr><td colspan="2" style="padding-top:6px;">
+  <em>Regla:</em> meta departamental de <strong>${depConf.threshold}</strong>.
+  <br>Se cumple con la <strong>suma</strong> de las metas de los municipios candidatos.
+</td></tr>`;
+
+        }
+      }
 
       const rows = items.length
         ? items.map(it => `<tr><td>${it.munRaw || it.mun}</td><td>${fmt(it.val)}</td></tr>`).join("")
@@ -1142,6 +1242,7 @@
     <table>
       <tr><td>Proyecto</td><td><strong>${proj}</strong></td></tr>
       <tr><td>Total depto</td><td>${fmt(total)}</td></tr>
+      ${ruleNote}
     </table>
     <div class="list">
       <table>
@@ -1150,13 +1251,14 @@
       </table>
     </div>
   `;
+
       infoCard.style.display = "block";
       onMove(e);
     }
+
 
 
   </script>
 </body>
 
 </html>
-
