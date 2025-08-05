@@ -289,22 +289,6 @@
     .leaflet-interactive {
       cursor: pointer;
     }
-    /* Tarjeta fija por defecto (escritorio) ya la tienes con .infocard.locked */
-
-/* ====== MÓVIL: tarjeta acoplada ABAJO ====== */
-@media (max-width: 768px) {
-  .infocard.locked {
-    left: 12px; right: 12px; top: auto; bottom: 12px;   /* abajo */
-    max-width: none;                                     /* ocupa ancho útil */
-    border-radius: 16px;
-    transform-origin: bottom center;                     /* animación desde abajo */
-  }
-  .infocard .list { max-height: 160px; overflow-y: auto; }
-
-  /* Un poco más de espacio para el panel de botones */
-  .panel { top: 8px; left: 8px; right: 8px; }
-}
-
   </style>
 </head>
 
@@ -914,53 +898,38 @@
     }
 
     function paintByProject(projectName) {
-  if (!geojsonLayer) return;
-  CURRENT_PROJECT = projectName;
+      if (!geojsonLayer) return;
+      CURRENT_PROJECT = projectName;
 
-  const hue = PROJECT_COLORS[projectName] ?? 220;
-  const { min, max } = valueExtentByProject[projectName] || { min: 0, max: 0 };
+      const hue = PROJECT_COLORS[projectName] ?? 220;
+      const { min, max } = valueExtentByProject[projectName] || { min: 0, max: 0 };
 
-  let hasAny = false;
-  let bounds = L.latLngBounds();
-  let topLayer = null;
-  let topVal = -1;
+      let hasAny = false;
+      let bounds = L.latLngBounds();
 
-  geojsonLayer.eachLayer(layer => {
-    const depKey = layer.featureNames.key;
-    const depInfo = deptData.get(depKey);
-    const total = depInfo?.byProject[projectName]?.total || 0;
+      geojsonLayer.eachLayer(layer => {
+        const depKey = layer.featureNames.key; // departamento normalizado
+        const depInfo = deptData.get(depKey);
+        const total = depInfo?.byProject[projectName]?.total || 0;
 
-    const fill = colorScale(total, min, max, hue);
-    const fo = total > 0 ? 0.95 : 0.85;
-    layer.setStyle({ fillColor: fill, fillOpacity: fo, color: "#9aa0a6", weight: 0.7 });
+        const fill = colorScale(total, min, max, hue);
+        const fo = total > 0 ? 0.95 : 0.85;
+        layer.setStyle({ fillColor: fill, fillOpacity: fo, color: "#9aa0a6", weight: 0.7 });
 
-    if (total > 0) {
-      hasAny = true;
-      if (total > topVal) { topVal = total; topLayer = layer; }
-      try { bounds.extend(layer.getBounds()); } catch (e) {}
+        if (total > 0) {
+          hasAny = true;
+          try { bounds.extend(layer.getBounds()); } catch (e) { }
+        }
+      });
+
+      updateLegend(min, max, projectName);
+
+      if (hasAny && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 }); // <-- zoom suave
+      } else {
+        map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+      }
     }
-  });
-
-  updateLegend(min, max, projectName);
-
-  if (hasAny && bounds.isValid()) {
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 });
-    // Auto-focus al top (opcional, comenta si no lo quieres)
-    if (topLayer) {
-      LOCKED_FEATURE = topLayer;
-      // muestra y ancla tarjeta
-      showInfoCard({ originalEvent: { pageX: 0, pageY: 0 } }, topLayer, true);
-      infoCard.classList.add('locked');
-      infoCard.style.left = "auto";
-      infoCard.style.right = "24px";
-      infoCard.style.top = "24px";
-      focusDept(topLayer);
-    }
-  } else {
-    map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
-  }
-}
-
 
     function focusDept(layer) {
       if (!geojsonLayer) return;
@@ -1087,27 +1056,7 @@
       infoCard.style.left = (e.originalEvent.pageX + pad) + "px";
       infoCard.style.top = (e.originalEvent.pageY + pad) + "px";
     }
-    function placeInfoCardLocked() {
-  // Escritorio: esquina sup. derecha
-  infoCard.style.left = "auto";
-  infoCard.style.right = "24px";
-  infoCard.style.top = "24px";
-  infoCard.style.bottom = "auto";
 
-  // Móvil: abajo tipo "bottom sheet"
-  if (window.innerWidth <= 768) {
-    infoCard.style.left = "12px";
-    infoCard.style.right = "12px";
-    infoCard.style.top = "auto";
-    infoCard.style.bottom = "12px";
-  }
-}
-
-// Recolocar si cambia el tamaño de la ventana
-window.addEventListener('resize', () => {
-  if (infoCard.classList.contains('locked')) placeInfoCardLocked();
-});
-    
     function onLeave(e, layer) {
       if (LOCKED_FEATURE && LOCKED_FEATURE === layer) return;
       layer.setStyle({ weight: 0.6, color: "#888" });
@@ -1132,7 +1081,9 @@ window.addEventListener('resize', () => {
         showInfoCard(e, layer, true);
         infoCard.classList.remove('fly-out');
         infoCard.classList.add('locked');
-        placeInfoCardLocked();
+        infoCard.style.left = "auto";
+        infoCard.style.right = "24px";
+        infoCard.style.top = "24px";
         focusDept(layer);
       }
     }
@@ -1207,6 +1158,4 @@ window.addEventListener('resize', () => {
   </script>
 </body>
 
-
 </html>
-
