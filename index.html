@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Mapa de Proyectos - FCI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- PapaParse para leer CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    :root {
+      --card-bg: rgba(255, 255, 255, 0.9);
+      --shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+      --radius: 14px;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #f5f6fa;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    #map {
+      height: 100%;
+    }
+
+    .panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 1000;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .panel h3 {
+      margin: 6px 10px 2px;
+      font-size: 14px;
+      font-weight: 700;
+      width: 100%;
+    }
+
+    .btn {
+      border: 0;
+      padding: 8px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      background: white;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      transition: transform .08s ease, box-shadow .2s ease, background .2s ease;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    }
+
+    .btn.active {
+      background: #eef4ff;
+    }
+
+    .btn.reset {
+      background: #fff3f3;
+    }
+
+    .legend {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      z-index: 1000;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.2;
+      min-width: 160px;
+    }
+
+    .legend .scale {
+      display: flex;
+      gap: 2px;
+      margin-top: 6px;
+    }
+
+    .legend .scale div {
+      height: 10px;
+      flex: 1;
+      border-radius: 2px;
+    }
+
+    .legend .labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      opacity: .8;
+    }
+
+    .infocard {
+      position: absolute;
+      pointer-events: none;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px 12px;
+      font-size: 13px;
+      z-index: 1100;
+      display: none;
+      max-width: 320px;
+    }
+
+    .infocard h4 {
+      margin: 0 0 6px;
+      font-size: 14px;
+    }
+
+    .infocard .tag {
+      display: inline-block;
+      background: #eef4ff;
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .infocard table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+    }
+
+    .infocard td {
+      padding: 4px 0;
+      border-bottom: 1px dashed #e5e7eb;
+      font-size: 12px;
+    }
+
+    .infocard td:first-child {
+      opacity: .7;
+      padding-right: 8px;
+    }
+
+    .notice {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 1000;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px 12px;
+      font-size: 12px;
+      max-width: 360px;
+    }
+
+    .footer {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      z-index: 1000;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 8px 12px;
+      font-size: 11px;
+      opacity: .8;
+    }
+
+    /* lista con scroll dentro de la tarjeta */
+    .infocard .list {
+      max-height: 240px;
+      overflow: auto;
+      margin-top: 6px;
+    }
+
+    .infocard .list table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .infocard .list td {
+      padding: 4px 0;
+      border-bottom: 1px dashed #e5e7eb;
+      font-size: 12px;
+    }
+
+    /* Tarjeta anclada (modo foco) */
+    .infocard.locked {
+      position: absolute;
+      right: 24px;
+      top: 24px;
+      left: auto;
+      pointer-events: auto;
+      transform-origin: top right;
+      animation: pop-in .18s ease-out;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .20);
+    }
+
+    @keyframes pop-in {
+      from {
+        transform: scale(.85);
+        opacity: 0
+      }
+
+      to {
+        transform: scale(1);
+        opacity: 1
+      }
+    }
+
+    /* Pulso del borde del dpto enfocado */
+    .leaflet-overlay-pane svg .pulse-stroke {
+      animation: stroke-pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes stroke-pulse {
+      0% {
+        stroke-width: .8;
+        opacity: 1
+      }
+
+      50% {
+        stroke-width: 2.2;
+        opacity: .7
+      }
+
+      100% {
+        stroke-width: .8;
+        opacity: 1
+      }
+
+    }
+
+    /* Marcador ripple en el centro */
+    .ripple-dot {
+      position: relative;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #111;
+      opacity: .9;
+    }
+
+    .ripple-dot::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      margin: -5px 0 0 -5px;
+      border-radius: 50%;
+      border: 2px solid #111;
+      animation: ripple 1.4s ease-out infinite;
+    }
+
+    @keyframes ripple {
+      0% {
+        transform: scale(1);
+        opacity: .6
+      }
+
+      100% {
+        transform: scale(4.2);
+        opacity: 0
+      }
+    }
+
+    /* Mano al pasar por polígonos clicables */
+    .leaflet-interactive {
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div class="panel" id="panel">
+    <h3>Proyectos</h3>
+    <!-- Los botones se crean dinámicamente desde PROJECTS -->
+    <button class="btn reset" id="btn-reset" title="Limpiar selección">Reset</button>
+  </div>
+
+  <div class="legend" id="legend" style="display:none;">
+    <div><strong id="legend-title">Intensidad (metas)</strong></div>
+    <div class="scale" id="legend-scale"></div>
+    <div class="labels"><span id="min-label">0</span><span id="max-label">0</span></div>
+  </div>
+
+  <div class="infocard" id="infocard"></div>
+
+  <div class="notice">
+    <strong>Cómo usar:</strong> elige un proyecto para colorear <b>Departamentos</b> con metas &gt; 0.
+    Pasa el mouse para ver detalles. Haz <em>click</em> para fijar la tarjeta; click fuera para soltar.
+  </div>
+
+  <div class="footer">FCI • Mapa interactivo de metas por municipio</div>
+
+  <script>
+    /***** 1) Config *****/
+    // Rutas de datos (ajusta si cambias carpetas)
+    const MUNICIPALITIES_GEOJSON_URL = "colombia_municipios.geojson";
+    const CSV_URL = "metas.csv";
+    const FORCE_MUN_FIELD = "name";  // CAMBIA según tu geojson
+    const FORCE_DEP_FIELD = "dpt";   // CAMBIA según tu geojson
+
+
+    // Nombres EXACTOS de proyectos (de tu Excel):
+    const PROJECTS = [
+      "Empleo Sin Barreras (mitigacion + conexión)",
+      "Fondo Mujer 2.0",
+      "CONFAMA",
+      "Alcaldia de Malambo",
+      "Alcaldia de Barranquilla"
+    ];
+    const TOTAL_FIELD = "Total"; // opcional
+    const PROJECT_COLORS = {
+      "Empleo Sin Barreras (mitigacion + conexión)": 210, // azul
+      "Fondo Mujer 2.0": 290,                             // morado
+      "CONFAMA": 25,                                      // naranja
+      "Alcaldia de Malambo": 140,                         // verde
+      "Alcaldia de Barranquilla": 0                       // rojo
+    };
+
+
+    // Paleta y función de color
+    // Escala por proyecto: mismo HUE, cambia luminosidad según la meta
+    // Escala por proyecto: mismo HUE, más contraste de luz
+    // Hue por proyecto (ya lo definiste arriba). Escala con más contraste
+    function colorScale(value, min, max, hue) {
+      if (!isFinite(value) || value <= 0 || max <= 0) return "#f1f5f9"; // gris
+      const t = Math.min(1, value / max);
+      const light = 85 - 40 * t; // 85% → 45%
+      return `hsl(${hue} 85% ${light}%)`;
+    }
+
+
+
+
+    // Normaliza nombres para empatar CSV <-> GeoJSON
+    // Normaliza nombres para empatar CSV <-> GeoJSON
+    const norm = (s) => {
+      let x = String(s || "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase().trim()
+        .replace(/\./g, " ")
+        .replace(/-/g, " ")
+        .replace(/\s+/g, " ");
+      x = x.replace(/^BOGOTA.*$/, "BOGOTA D C");
+      x = x.replace(/^SAN ANDRES.*$/, "SAN ANDRES");
+      x = x.replace(/^PROVIDENCIA.*$/, "PROVIDENCIA");
+      return x;
+    };
+
+
+
+
+    // Detectar propiedades de nombre en GeoJSON
+    // Detectar propiedades de nombre en GeoJSON (permite forzar campos)
+    // Detectar propiedades de nombre en GeoJSON (respeta los forzados)
+    // Detectar propiedades de nombre en GeoJSON (solo departamento)
+    function detectProps(props) {
+      const depKey = FORCE_DEP_FIELD || (props.dpt ? "dpt" : null);
+      return { depKey };
+    }
+
+
+
+
+    /***** 2) Mapa base *****/
+    const map = L.map('map', { zoomControl: true }).setView([4.7, -74.1], 5);
+    L.tileLayer('', { attribution: '' }).addTo(map);
+    document.getElementById('map').style.backgroundColor = '#ffffff';
+
+
+
+
+    const layerGroup = L.layerGroup().addTo(map);
+    let geojsonLayer = null;
+    let CURRENT_PROJECT = null;
+    let LOCKED_FEATURE = null;
+    let rippleMarker = null; // para el efecto ripple en foco
+    const panel = document.getElementById("panel");
+    const legend = document.getElementById("legend");
+    const legendScale = document.getElementById("legend-scale");
+    const minLabel = document.getElementById("min-label");
+    const maxLabel = document.getElementById("max-label");
+    const legendTitle = document.getElementById("legend-title");
+    const infoCard = document.getElementById("infocard");
+
+    /***** 3) Cargar CSV y GeoJSON *****/
+    /***** 3) Cargar CSV y GeoJSON *****/
+    let dataMap = new Map(); // key = "DEPTO||MUNICIPIO" -> {proyectos...}
+    let valueExtentByProject = {}; // proyecto -> {min, max}
+    // --- Índice por DEPARTAMENTO ---
+    let deptData = new Map();
+    // deptData.get(dep) => { byProject: { [proj]: { total: number, items: Array<{munRaw, mun, val}> } } }
+
+    function buildDeptData(rows) {
+      deptData = new Map();
+      // Inicializa extents
+      PROJECTS.forEach(p => valueExtentByProject[p] = { min: Infinity, max: -Infinity });
+
+      rows.forEach(r => {
+        const depRaw = r["Depto"];                // conservar acentos para mostrar
+        const munRaw = r["Municipio"] || "";      // idem
+        const dep = norm(depRaw);
+        const mun = norm(munRaw);
+        if (!dep) return;
+
+        // Inicializar estructura del departamento
+        if (!deptData.has(dep)) deptData.set(dep, { byProject: {} });
+
+        // Sumar por cada proyecto
+        PROJECTS.forEach(p => {
+          const v = Number(r[p] ?? 0);
+          if (!deptData.get(dep).byProject[p]) {
+            deptData.get(dep).byProject[p] = { total: 0, items: [] };
+          }
+          if (!isNaN(v) && v > 0) {
+            deptData.get(dep).byProject[p].total += v;
+            deptData.get(dep).byProject[p].items.push({ munRaw, mun, val: v });
+          }
+        });
+      });
+
+      // Calcular min/max por proyecto basado en totales departamentales
+      PROJECTS.forEach(p => {
+        let min = Infinity, max = -Infinity;
+        deptData.forEach(d => {
+          const t = d.byProject[p]?.total || 0;
+          min = Math.min(min, t);
+          max = Math.max(max, t);
+        });
+        valueExtentByProject[p] = {
+          min: isFinite(min) ? min : 0,
+          max: isFinite(max) ? max : 0
+        };
+      });
+    }
+
+    // Reemplaza tu loadFromArray por esta
+    function loadFromArray(rows) {
+      buildDeptData(rows);
+      loadGeoJSON();
+      buildProjectButtons();
+    }
+
+    // --- OPCIÓN SIN CSV ---
+    const INLINE_DATA =
+      [
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Barranquilla ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 75
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Barranquilla ",
+          "Alcaldia de Barranquilla": 100
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Soledad",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Malambo ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 45
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Malambo ",
+          "Alcaldia de Malambo": 200
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Galapa ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Atlántico",
+          "Municipio": "Puerto Colombia ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Medellin  ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 220
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Medellin  ",
+          "CONFAMA": 260
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Bello ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 20
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Bello ",
+          "CONFAMA": 45
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Envigado ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 20
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Envigado ",
+          "CONFAMA": 25
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Itagui ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 20
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Itagui ",
+          "CONFAMA": 20
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Sabaneta ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 20
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Sabaneta ",
+          "CONFAMA": 5
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Rionegro",
+          "CONFAMA": 25
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "La Ceja",
+          "CONFAMA": 5
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Carmen de Viboral",
+          "CONFAMA": 5
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Marinilla ",
+          "CONFAMA": 5
+        },
+        {
+          "Depto": "Antioquia",
+          "Municipio": "Guarne",
+          "CONFAMA": 5
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Cali ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 250
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Cali ",
+          "Fondo Mujer 2.0": 510
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Jamundi ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Jamundi ",
+          "Fondo Mujer 2.0": 30
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Palmira ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Palmira ",
+          "Fondo Mujer 2.0": 50
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Jumbo ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Jumbo ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Cartago",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Valle del Cauca",
+          "Municipio": "Cartago",
+          "Fondo Mujer 2.0": 20
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Bogotá",
+          "Empleo Sin Barreras (mitigacion + conexión)": 465
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Bogotá",
+          "Fondo Mujer 2.0": 950
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Chia ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Chia ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Mosquera ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 55
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Mosquera ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Soacha ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 35
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Soacha ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Cota ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Cota ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Funza",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Cundinamarca ",
+          "Municipio": "Funza",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Cucuta ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 35
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Cucuta ",
+          "Fondo Mujer 2.0": 40
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Villa del Rosario ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Villa del Rosario ",
+          "Fondo Mujer 2.0": 10
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Los Patios ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "Los Patios ",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "El Zulia",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Norte de Santander",
+          "Municipio": "El Zulia",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Bucaramanga ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 35
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Bucaramanga ",
+          "Fondo Mujer 2.0": 20
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Pie de Cuesta ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Pie de Cuesta ",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Giron ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "Giron ",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "FloridaBlanca ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Santander",
+          "Municipio": "FloridaBlanca ",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Pereira ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Pereira ",
+          "Fondo Mujer 2.0": 30
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Marsella",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Marsella",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Dos Quebradas",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Dos Quebradas",
+          "Fondo Mujer 2.0": 10
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Santa Rosa de Cabal ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Risaralda",
+          "Municipio": "Santa Rosa de Cabal ",
+          "Fondo Mujer 2.0": 5
+        },
+        {
+          "Depto": "Tolima",
+          "Municipio": "Ibague ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Tolima",
+          "Municipio": "Ibague ",
+          "Fondo Mujer 2.0": 30
+        },
+        {
+          "Depto": "Caldas",
+          "Municipio": "Manizales ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 25
+        },
+        {
+          "Depto": "Caldas",
+          "Municipio": "Manizales ",
+          "Fondo Mujer 2.0": 20
+        },
+        {
+          "Depto": "Caldas",
+          "Municipio": "Villa Maria ",
+          "Empleo Sin Barreras (mitigacion + conexión)": 10
+        },
+        {
+          "Depto": "Caldas",
+          "Municipio": "Villa Maria ",
+          "Fondo Mujer 2.0": 5
+        }
+      ]
+    loadFromArray(INLINE_DATA);
+
+
+    function loadGeoJSON() {
+      fetch(MUNICIPALITIES_GEOJSON_URL)
+        .then(r => r.json())
+        .then(geo => {
+          if (geojsonLayer) layerGroup.removeLayer(geojsonLayer);
+
+          const sampleProps = geo.features?.[0]?.properties || {};
+          const { depKey } = detectProps(sampleProps);
+          if (!depKey) {
+            console.error("No pude detectar el campo de departamento en el GeoJSON. Props ejemplo:", sampleProps);
+            alert("Ajusta FORCE_DEP_FIELD con el nombre real del campo de departamento.");
+            return;
+          }
+          console.log("Campo de departamento del GeoJSON:", depKey);
+
+          geojsonLayer = L.geoJSON(geo, {
+            style: baseStyle,
+            onEachFeature: (feature, layer) => {
+              const p = feature.properties || {};
+              const depName = norm(p[depKey]);
+              const key = depName; // clave = solo departamento
+              layer.featureNames = {
+                depRaw: p[depKey],
+                dep: depName,
+                key
+              };
+
+              layer.on({
+                mouseover: (e) => onHover(e, layer),
+                mousemove: (e) => onMove(e),
+                mouseout: (e) => onLeave(e, layer),
+                click: (e) => onClick(e, layer)
+              });
+            }
+          }).addTo(layerGroup);
+
+          map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        })
+        .catch(err => {
+          console.error("Error cargando GeoJSON:", err);
+          alert("No se pudo cargar el GeoJSON de departamentos. Ver consola.");
+        });
+    }
+
+
+
+    /***** 4) Estilos y pintado *****/
+    function baseStyle() {
+      return {
+        color: "#888", weight: 0.6, opacity: 0.8,
+        fillColor: "#f3f4f6", fillOpacity: 0.9
+      };
+    }
+
+    function paintByProject(projectName) {
+      if (!geojsonLayer) return;
+      CURRENT_PROJECT = projectName;
+
+      const hue = PROJECT_COLORS[projectName] ?? 220;
+      const { min, max } = valueExtentByProject[projectName] || { min: 0, max: 0 };
+
+      let hasAny = false;
+      let bounds = L.latLngBounds();
+
+      geojsonLayer.eachLayer(layer => {
+        const depKey = layer.featureNames.key; // departamento normalizado
+        const depInfo = deptData.get(depKey);
+        const total = depInfo?.byProject[projectName]?.total || 0;
+
+        const fill = colorScale(total, min, max, hue);
+        const fo = total > 0 ? 0.95 : 0.85;
+        layer.setStyle({ fillColor: fill, fillOpacity: fo, color: "#9aa0a6", weight: 0.7 });
+
+        if (total > 0) {
+          hasAny = true;
+          try { bounds.extend(layer.getBounds()); } catch (e) { }
+        }
+      });
+
+      updateLegend(min, max, projectName);
+
+      if (hasAny && bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 7 }); // <-- zoom suave
+      } else {
+        map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+      }
+    }
+
+    function focusDept(layer) {
+      if (!geojsonLayer) return;
+
+      // Atenúa el resto y resalta el enfocado
+      geojsonLayer.eachLayer(l => {
+        const isTarget = (l === layer);
+        l.setStyle({
+          opacity: isTarget ? 1 : 0.4,
+          fillOpacity: isTarget ? Math.max(l.options.fillOpacity || 0.9, 0.9) : 0.15,
+          color: isTarget ? "#111" : "#bbb",
+          weight: isTarget ? 1.2 : 0.5
+        });
+        if (l._path) L.DomUtil.removeClass(l._path, 'pulse-stroke');
+      });
+      if (layer._path) L.DomUtil.addClass(layer._path, 'pulse-stroke');
+
+      // Ripple en el centro
+      try {
+        const c = layer.getBounds().getCenter();
+        if (rippleMarker) map.removeLayer(rippleMarker);
+        rippleMarker = L.marker(c, {
+          icon: L.divIcon({ className: "", html: '<div class="ripple-dot"></div>', iconSize: [10, 10], iconAnchor: [5, 5] })
+        }).addTo(map);
+      } catch (e) { }
+
+      // Fly suave al departamento
+      try { map.flyToBounds(layer.getBounds(), { padding: [40, 40], maxZoom: 8, duration: 0.8, easeLinearity: 0.2 }); } catch (e) { }
+    }
+
+    function clearFocus() {
+      if (rippleMarker) { map.removeLayer(rippleMarker); rippleMarker = null; }
+      if (geojsonLayer) {
+        if (CURRENT_PROJECT) {
+          paintByProject(CURRENT_PROJECT);
+        } else {
+          geojsonLayer.eachLayer(l => l.setStyle(baseStyle()));
+          map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        }
+        geojsonLayer.eachLayer(l => { if (l._path) L.DomUtil.removeClass(l._path, 'pulse-stroke'); });
+      }
+    }
+    const fmt = (n) => {
+      const v = Number(n || 0);
+      return isFinite(v) ? v.toLocaleString('es-CO') : '0';
+    };
+
+
+    function resetPaint() {
+      // limpia foco, ripple y estilos
+      clearFocus();
+
+      CURRENT_PROJECT = null;
+      LOCKED_FEATURE = null;
+      infoCard.classList.remove('locked');
+      infoCard.style.display = "none";
+
+      if (geojsonLayer) {
+        geojsonLayer.eachLayer(layer => layer.setStyle(baseStyle()));
+        map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+      }
+
+      legend.style.display = "none";
+      document.querySelectorAll(".btn[data-project]").forEach(b => b.classList.remove("active"));
+    }
+
+
+
+    function updateLegend(min, max, title) {
+      const hue = PROJECT_COLORS[title] ?? 220;
+
+      // Oculta leyenda si no hay datos
+      if (!isFinite(max) || max <= 0) {
+        legend.style.display = "none";
+        return;
+      }
+
+      legend.style.display = "block";
+      legendTitle.textContent = `${title} — intensidad`;
+      legendScale.innerHTML = "";
+
+      const stops = 8;
+      for (let i = 0; i < stops; i++) {
+        const v = min + (i / (stops - 1)) * (max - min);
+        const color = colorScale(v, min, max, hue);
+        const box = document.createElement("div");
+        box.style.background = color;
+        legendScale.appendChild(box);
+      }
+      minLabel.textContent = String(min);
+      maxLabel.textContent = String(max);
+    }
+
+
+    /***** 5) Eventos UI *****/
+    function buildProjectButtons() {
+      const resetBtn = document.getElementById("btn-reset");
+      resetBtn.addEventListener("click", resetPaint);
+
+      PROJECTS.forEach(name => {
+        const btn = document.createElement("button");
+        btn.className = "btn";
+        btn.textContent = name;
+        btn.dataset.project = name;
+        btn.addEventListener("click", () => {
+          // Visual active
+          document.querySelectorAll(".btn[data-project]").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          paintByProject(name);
+        });
+        panel.insertBefore(btn, resetBtn);
+      });
+    }
+
+    function onHover(e, layer) {
+      if (LOCKED_FEATURE && LOCKED_FEATURE !== layer) return; // si está bloqueada otra, ignora
+      layer.setStyle({ weight: 1.2, color: "#111" });
+      showInfoCard(e, layer);
+    }
+    function onMove(e) {
+      if (infoCard.style.display === "none") return;
+      if (infoCard.classList.contains('locked')) return; // si está anclada, no se mueve
+      const pad = 12;
+      infoCard.style.left = (e.originalEvent.pageX + pad) + "px";
+      infoCard.style.top = (e.originalEvent.pageY + pad) + "px";
+    }
+
+    function onLeave(e, layer) {
+      if (LOCKED_FEATURE && LOCKED_FEATURE === layer) return;
+      layer.setStyle({ weight: 0.6, color: "#888" });
+      if (!LOCKED_FEATURE) infoCard.style.display = "none";
+    }
+    function onClick(e, layer) {
+      // 👉 evita que el click del layer burbujee al mapa
+      if (e) L.DomEvent.stop(e);
+
+      if (LOCKED_FEATURE === layer) {
+        // Desbloquear
+        LOCKED_FEATURE = null;
+        infoCard.classList.remove('locked');
+        infoCard.classList.add('fly-out');
+        setTimeout(() => {
+          infoCard.style.display = "none";
+          infoCard.classList.remove('fly-out');
+        }, 250);
+        clearFocus();
+      } else {
+        LOCKED_FEATURE = layer;
+        showInfoCard(e, layer, true);
+        infoCard.classList.remove('fly-out');
+        infoCard.classList.add('locked');
+        infoCard.style.left = "auto";
+        infoCard.style.right = "24px";
+        infoCard.style.top = "24px";
+        focusDept(layer);
+      }
+    }
+
+
+    map.on("click", (e) => {
+      // 👉 si el click fue sobre un elemento interactivo (polígono), no cerrar aquí
+      if (e.originalEvent && e.originalEvent.target && e.originalEvent.target.closest('.leaflet-interactive')) {
+        return;
+      }
+
+      if (!LOCKED_FEATURE) return;
+      LOCKED_FEATURE = null;
+      infoCard.classList.remove('locked');
+      infoCard.classList.add('fly-out');
+      setTimeout(() => {
+        infoCard.style.display = "none";
+        infoCard.classList.remove('fly-out');
+      }, 250);
+      clearFocus();
+    });
+
+
+
+
+    function showInfoCard(e, layer, forceShow = false) {
+      const depRaw = layer.featureNames.depRaw || "Departamento";
+
+      if (!CURRENT_PROJECT && !forceShow) {
+        infoCard.innerHTML = `
+      <h4>${depRaw}</h4>
+      <div class="tag">Departamento</div>
+      <table>
+        <tr><td>Estado</td><td>Selecciona un proyecto para ver la proyección</td></tr>
+      </table>
+    `;
+        infoCard.style.display = "block";
+        onMove(e);
+        return;
+      }
+
+      const depKey = layer.featureNames.key;      // normalizado
+      const depInfo = deptData.get(depKey) || {};
+      const proj = CURRENT_PROJECT || "(sin seleccionar)";
+      const node = depInfo.byProject?.[proj];
+      const total = node?.total || 0;
+      const items = (node?.items || []).slice().sort((a, b) => b.val - a.val); // todos
+
+      const rows = items.length
+        ? items.map(it => `<tr><td>${it.munRaw || it.mun}</td><td>${fmt(it.val)}</td></tr>`).join("")
+        : `<tr><td colspan="2">Sin metas en este proyecto</td></tr>`;
+
+      infoCard.innerHTML = `
+    <h4>${depRaw}</h4>
+    <div class="tag">Departamento</div>
+    <table>
+      <tr><td>Proyecto</td><td><strong>${proj}</strong></td></tr>
+      <tr><td>Total depto</td><td>${fmt(total)}</td></tr>
+    </table>
+    <div class="list">
+      <table>
+        <tr><td colspan="2"><strong>Desglose por municipios</strong></td></tr>
+        ${rows}
+      </table>
+    </div>
+  `;
+      infoCard.style.display = "block";
+      onMove(e);
+    }
+
+
+  </script>
+</body>
+
+</html>
